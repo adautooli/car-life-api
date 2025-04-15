@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
-const getNextSequence = require('../utils/getNextSequence');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
@@ -12,21 +11,22 @@ router.post('/register', async (req, res) => {
 
   try {
     const existingUser = await User.findOne({ email });
-    if (existingUser) return res.status(400).json({status: false, msg: 'Email já cadastrado' });
+    if (existingUser)
+      return res.status(400).json({ status: false, msg: 'Email já cadastrado' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const newId = await getNextSequence('user_id');
+    const user = new User({ fullName, email, password: hashedPassword });
 
-
-    const user = new User({ id: newId, fullName, email, password: hashedPassword });
     await user.save();
 
-    res.status(201).json({ status: true ,msg: 'Usuário cadastrado com sucesso' });
+    res.status(201).json({ status: true, msg: 'Usuário cadastrado com sucesso' });
   } catch (err) {
+    console.error('❌ Erro ao cadastrar usuário:', err);
     res.status(500).json({ status: false, msg: 'Erro no servidor' });
   }
 });
+
 
 // Login
 router.post('/login', async (req, res) => {
