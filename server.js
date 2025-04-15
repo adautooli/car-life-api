@@ -9,6 +9,9 @@ app.use(express.json());
 
 // Rotas
 app.use('/api', require('./routes/auth'));
+app.use('/api/car', require('./routes/car'));
+app.use('/api/transfer', require('./routes/transfer'));
+
 
 // Conexão com MongoDB
 mongoose.connect(process.env.MONGO_URI)
