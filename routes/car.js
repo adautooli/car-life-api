@@ -21,31 +21,29 @@ const authenticate = async (req, res, next) => {
 
 // Cadastro de carro (somente para usuários autenticados)
 router.post('/registerCar', authenticate, async (req, res) => {
-  const { placa, modelo, ano } = req.body;
-
-  if (!placa || !modelo || !ano) {
-    return res.status(400).json({ status: false, msg: 'Todos os campos são obrigatórios' });
-  }
+  const { plate, model, modelYear, manufactureYear, color, mileage } = req.body;
 
   try {
-    const existingCar = await Car.findOne({ placa });
-    if (existingCar) {
-      return res.status(400).json({ status: false, msg: 'Já existe um carro com essa placa' });
-    }
+    const existingCar = await Car.findOne({ plate });
+    if (existingCar)
+      return res.status(400).json({ status: false, msg: 'This plate is already registered' });
 
-    const newCar = new Car({
-      placa,
-      modelo,
-      ano,
+    const car = new Car({
+      plate,
+      model,
+      modelYear,
+      manufactureYear,
+      color,
+      mileage,
       user: req.userId
     });
 
-    await newCar.save();
+    await car.save();
 
-    res.status(201).json({ status: true, msg: 'Carro cadastrado com sucesso' });
+    res.status(201).json({ status: true, msg: 'Car registered successfully', car });
   } catch (err) {
-    console.error('❌ Erro ao cadastrar carro:', err);
-    res.status(500).json({ status: false, msg: 'Erro no servidor' });
+    console.error('❌ Error registering car:', err);
+    res.status(500).json({ status: false, msg: 'Server error' });
   }
 });
 
@@ -53,7 +51,22 @@ router.post('/registerCar', authenticate, async (req, res) => {
 router.get('/myCars', authenticate, async (req, res) => {
   try {
     const cars = await Car.find({ user: req.userId });
-    res.status(200).json({ status: true, cars });
+
+    const sanitizedCars = cars.map(car => {
+      const carObject = car.toObject();
+
+      if (!carObject.previousOwners || carObject.previousOwners.length === 0) {
+        delete carObject.previousOwners;
+      }
+
+      if (!carObject.transferHistory || carObject.transferHistory.length === 0) {
+        delete carObject.transferHistory;
+      }
+
+      return carObject;
+    });
+
+    res.status(200).json({ status: true, cars: sanitizedCars });
   } catch (err) {
     res.status(500).json({ status: false, msg: 'Erro ao buscar carros' });
   }
