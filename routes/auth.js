@@ -6,7 +6,31 @@ const jwt = require('jsonwebtoken');
 const authenticate = require('../middleware/auth');
 const moment = require('moment');
 const resizeBase64Image = require('../utils/resizeBase64Image');
+const multer = require('multer');
+const sharp = require('sharp');
+const { uploadBufferToCloudinary } = require('../utils/uploadCloudinary');
+
 require('dotenv').config();
+
+// Armazena o arquivo em memória (buffer) e aceita apenas imagens (até 8MB)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (!file.mimetype?.startsWith('image/')) return cb(new Error('Invalid file type'));
+    cb(null, true);
+  }
+});
+
+// Redimensiona/otimiza para avatar
+async function normalizeAvatar(buffer) {
+  return sharp(buffer)
+    .rotate()
+    .resize(512, 512, { fit: 'cover' })
+    .jpeg({ quality: 85, mozjpeg: true })   // se preferir: .webp({ quality: 80 })
+    .toBuffer();
+}
+
 
 // ✅ Cadastro
 router.post('/register', async (req, res) => {
@@ -75,36 +99,65 @@ router.get('/me', authenticate, async (req, res) => {
 });
 
 
-// ✅ Atualizar perfil (sem alterar nome e email)
-router.patch('/me/update', authenticate, async (req, res) => {
-  const { birthday, profileImage, password } = req.body;
-
+// ✅ Atualizar perfil (sem alterar nome e email) + upload de avatar
+router.patch('/me/update', authenticate, upload.single('profileImage'), async (req, res) => {
   try {
+    const { birthday, password } = req.body;
+
+    // Nunca permitir alterar email/fullName (ignora silenciosamente se vierem)
+    if ('email' in req.body) delete req.body.email;
+    if ('fullName' in req.body) delete req.body.fullName;
+
     const user = await User.findById(req.userId);
     if (!user) return res.status(404).json({ status: false, msg: 'Usuário não encontrado' });
 
-    if (birthday !== undefined) user.birthday = birthday;
+    // Atualiza somente campos enviados
+    if (typeof birthday !== 'undefined') {
+      user.birthday = birthday; // mantém seu formato atual; se quiser, converto para Date depois
+    }
 
-    if (profileImage !== undefined) {
+    // FOTO DE PERFIL
+    // Prioridade: arquivo multipart (req.file). Se não vier, mantém compatibilidade com base64 no body.
+    if (req.file) {
       try {
-        const resized = await resizeBase64Image(profileImage);
-        user.profileImage = resized;
-      } catch (err) {
-        return res.status(400).json({ status: false, msg: 'Erro ao processar imagem: ' + err.message });
+        const normalized = await normalizeAvatar(req.file.buffer);
+        const url = await uploadBufferToCloudinary(normalized, { folder: 'profiles' });
+        user.profileImageUrl = url;     // guarda só a URL
+        if (user.profileImage) user.profileImage = undefined; // limpa legado base64
+      } catch (e) {
+        return res.status(400).json({ status: false, msg: 'Erro ao processar imagem: ' + e.message });
+      }
+    } else if (typeof req.body.profileImage === 'string' && req.body.profileImage.trim() !== '') {
+      // Compat: recebeu base64 no body
+      try {
+        const b64 = req.body.profileImage.replace(/^data:image\/\w+;base64,/, '');
+        const buf = Buffer.from(b64, 'base64');
+        const normalized = await normalizeAvatar(buf);
+        const url = await uploadBufferToCloudinary(normalized, { folder: 'profiles' });
+        user.profileImageUrl = url;
+        if (user.profileImage) user.profileImage = undefined;
+      } catch (e) {
+        return res.status(400).json({ status: false, msg: 'Erro ao processar imagem (base64): ' + e.message });
       }
     }
 
-    if (password !== undefined) {
+    if (typeof password !== 'undefined' && password !== '') {
       const hashed = await bcrypt.hash(password, 10);
       user.password = hashed;
     }
 
     await user.save();
-    res.json({ status: true, msg: 'Perfil atualizado com sucesso' });
+    return res.json({
+      status: true,
+      msg: 'Perfil atualizado com sucesso',
+      profileImageUrl: user.profileImageUrl
+    });
   } catch (err) {
-    res.status(500).json({ status: false, msg: 'Erro ao atualizar perfil', error: err.message });
+    console.error(err);
+    return res.status(500).json({ status: false, msg: 'Erro ao atualizar perfil', error: err.message });
   }
 });
+
 
 
 module.exports = router;
