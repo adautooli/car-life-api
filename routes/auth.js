@@ -80,16 +80,14 @@ router.get('/me', authenticate, async (req, res) => {
 
     const userObj = user.toObject();
 
-    
+    // Formatar data
     if (userObj.birthday) {
-      userObj.birthday = moment(userObj.birthday, 'DD/MM/YYYY').format('DD/MM/YYYY');
-    } else {
-      delete userObj.birthday;
+      userObj.birthday = moment(userObj.birthday).format('DD/MM/YYYY');
     }
 
-    
-    if (!userObj.profileImage) {
-      delete userObj.profileImage;
+    // Se não tiver imagem, remover o campo
+    if (!userObj.profileImageUrl) {
+      delete userObj.profileImageUrl;
     }
 
     res.json({ status: true, user: userObj });
@@ -97,6 +95,7 @@ router.get('/me', authenticate, async (req, res) => {
     res.status(500).json({ status: false, msg: 'Erro ao buscar usuário', error: err.message });
   }
 });
+
 
 
 // ✅ Atualizar perfil (sem alterar nome e email) + upload de avatar
