@@ -215,6 +215,38 @@ router.patch('/me/update', authenticate, upload.single('profileImage'), async (r
   }
 });
 
+// Buscar usuário pelo e-mail
+router.post('/user/search', authenticate, async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ status: false, msg: "Email is required" });
+    }
+
+    // Busca o usuário pelo e-mail
+    const user = await User.findOne({ email }).select('_id fullName email profileImageUrl');
+
+    // Caso não encontre ninguém
+    if (!user) {
+      return res.status(404).json({ status: false, msg: "User not found" });
+    }
+
+    // Retorna o usuário (mesmo que seja o próprio)
+    return res.status(200).json({
+      status: true,
+      user,
+    });
+  } catch (err) {
+    console.error("❌ Error searching user:", err);
+    res.status(500).json({
+      status: false,
+      msg: "Server error while searching user",
+      error: err.message,
+    });
+  }
+});
+
 
 
 module.exports = router;
