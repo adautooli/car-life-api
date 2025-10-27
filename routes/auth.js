@@ -229,7 +229,7 @@ router.post('/user/search', authenticate, async (req, res) => {
 
     // Caso não encontre ninguém
     if (!user) {
-      return res.status(404).json({ status: false, msg: "User not found" });
+      return res.status(200).json({ status: false, msg: "User not found" });
     }
 
     // Retorna o usuário (mesmo que seja o próprio)
