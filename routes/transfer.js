@@ -18,31 +18,55 @@ const authenticate = async (req, res, next) => {
     res.status(401).json({ status: false, msg: 'Invalid or expired token' });
   }
 };
-
 router.post('/initiate', authenticate, async (req, res) => {
   const { carId, newOwnerId } = req.body;
 
   try {
     const car = await Car.findById(carId);
-    if (!car) return res.status(404).json({ status: false, msg: 'Car not found' });
+    if (!car) 
+      return res.status(404).json({ status: false, msg: 'Car not found' });
+
+    // Verifica se o usuário logado é o dono do carro
     if (car.user.toString() !== req.userId)
       return res.status(403).json({ status: false, msg: 'Not the car owner' });
 
+    // Verifica se o novo dono é o mesmo que o atual dono
+    if (car.user.toString() === newOwnerId)
+      return res.status(400).json({ status: false, msg: 'Cannot transfer to yourself' });
+
+    // Verifica se já existe uma transferência em andamento para este carro
+    const existingTransfer = await OwnershipTransfer.findOne({
+      car: carId,
+      status: { $in: ['pending'] } // ajuste conforme o nome do seu status
+    });
+
+    if (existingTransfer) {
+      return res.status(400).json({
+        status: false,
+        msg: 'There is already an active transfer for this car'
+      });
+    }
+
+    // Cria nova transferência
     const transfer = new OwnershipTransfer({
       car: car._id,
       from: req.userId,
-      to: newOwnerId
+      to: newOwnerId,
+      status: 'pending'
     });
 
     await transfer.save();
+
     car.transferHistory.push(transfer._id);
     await car.save();
 
     res.status(201).json({ status: true, msg: 'Transfer initiated', transfer });
   } catch (err) {
+    console.error('❌ Error initiating transfer:', err);
     res.status(500).json({ status: false, msg: 'Server error', error: err.message });
   }
 });
+
 
 router.post('/accept', authenticate, async (req, res) => {
     const { transferId } = req.body;
